@@ -30,7 +30,11 @@ spec:
 | `metadata.name` | domain 内稳定名称。 |
 | `metadata.domain` | 语义命名空间。 |
 | `metadata.display_name` | 面向人的双语名称。 |
+| `metadata.properties` | 元素的附加字符串属性。 |
+| `metadata.tags` | 元素上的字符串标签。 |
 | `spec` | kind-specific 内容。 |
+
+整个 metadata 块会随元素一起存储和返回：`display_name`、`description`、`short_description`、`launch_stage`、`tags` 和 `properties`。元素带有这些内容时，`.umodel` 查询行和 REST 响应会把它们放在 `metadata` 下。宿主应用可以把自己的声明放进 `metadata.properties`，服务只存储，不解释。
 
 ## 核心 Kind
 

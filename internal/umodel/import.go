@@ -294,12 +294,76 @@ func elementFromPayload(payload map[string]any) (model.UModelElement, error) {
 
 	spec := nestedMap(payload, "spec")
 	return model.UModelElement{
-		Kind:    kind,
-		Domain:  domain,
-		Name:    name,
-		Version: version,
-		Spec:    spec,
+		Kind:     kind,
+		Domain:   domain,
+		Name:     name,
+		Version:  version,
+		Metadata: metadataFrom(metadata),
+		Spec:     spec,
 	}, nil
+}
+
+// metadataFrom reads the part of metadata that is not the element's identity.
+// It returns nil when none of it is set, so elements without any keep the
+// compact form they had before.
+func metadataFrom(metadata map[string]any) *model.ElementMetadata {
+	if metadata == nil {
+		return nil
+	}
+	m := &model.ElementMetadata{
+		DisplayName:      localizedText(metadata["display_name"]),
+		Description:      localizedText(metadata["description"]),
+		ShortDescription: localizedText(metadata["short_description"]),
+		LaunchStage:      firstString(metadata["launch_stage"]),
+		Tags:             stringMap(metadata["tags"]),
+		Properties:       stringMap(metadata["properties"]),
+	}
+	if m.IsZero() {
+		return nil
+	}
+	return m
+}
+
+// localizedText reads bilingual text. The schema type is semantic_string: a
+// map keyed by language. A bare string is also accepted and kept under en_us,
+// so an element written by hand with a plain string is not silently dropped.
+func localizedText(value any) map[string]string {
+	switch v := value.(type) {
+	case string:
+		if v == "" {
+			return nil
+		}
+		return map[string]string{"en_us": v}
+	case map[string]any:
+		return stringMap(v)
+	}
+	return nil
+}
+
+// stringMap keeps the string values of a map. Properties and tags are
+// map<string,string> in the schema; a value of another type (a YAML number or
+// bool) is written out as text rather than dropped, because a declaration such
+// as "min_count: 2" should not vanish.
+func stringMap(value any) map[string]string {
+	in, ok := value.(map[string]any)
+	if !ok || len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		if v == nil {
+			continue
+		}
+		if s, ok := v.(string); ok {
+			out[k] = s
+			continue
+		}
+		out[k] = fmt.Sprint(v)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func normalizeMap(source map[string]any) map[string]any {

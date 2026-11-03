@@ -1163,3 +1163,30 @@ func TestExecuteTopoWhereRelationType(t *testing.T) {
 		}
 	})
 }
+
+// .umodel rows carry the element's metadata when it has any, so a reader going
+// through the query path (a CLI, an agent) sees the properties a host stored.
+func TestUModelRowsIncludeMetadata(t *testing.T) {
+	ctx := context.Background()
+	store := graphfixture.New(t)
+	if _, err := store.PutUModelElements(ctx, model.UModelElementBatch{Workspace: "w", Elements: []model.UModelElement{
+		{Kind: "entity_set", Domain: "d", Name: "d.with", Metadata: &model.ElementMetadata{Properties: map[string]string{"k": "v"}}},
+		{Kind: "entity_set", Domain: "d", Name: "d.without"},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	res, err := NewService(store).Execute(ctx, "w", model.QueryRequest{Query: ".umodel | sort name"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Rows) != 2 {
+		t.Fatalf("rows = %+v", res.Rows)
+	}
+	with, without := res.Rows[0], res.Rows[1]
+	if m, ok := with["metadata"].(*model.ElementMetadata); !ok || m.Properties["k"] != "v" {
+		t.Errorf("row with metadata = %+v", with)
+	}
+	if _, has := without["metadata"]; has {
+		t.Errorf("a row without metadata must not gain the key: %+v", without)
+	}
+}

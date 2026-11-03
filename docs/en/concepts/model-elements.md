@@ -30,7 +30,11 @@ Important fields:
 | `metadata.name` | Stable name inside the domain. |
 | `metadata.domain` | Semantic namespace. |
 | `metadata.display_name` | Human-facing bilingual name when available. |
+| `metadata.properties` | Additional string properties of the element. |
+| `metadata.tags` | String labels on the element. |
 | `spec` | Kind-specific content. |
+
+The whole metadata block is stored and returned with the element: `display_name`, `description`, `short_description`, `launch_stage`, `tags` and `properties`. `.umodel` query rows and REST responses carry it under `metadata` when an element has any. A host application can keep its own declarations in `metadata.properties`; the service stores them and does not interpret them.
 
 ## Core Kinds
 

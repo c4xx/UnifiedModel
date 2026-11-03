@@ -723,9 +723,40 @@ components:
           type: string
         version:
           type: string
+        metadata:
+          $ref: "#/components/schemas/UModelElementMetadata"
         spec:
           type: object
           additionalProperties: true
+    UModelElementMetadata:
+      type: object
+      description: >-
+        The part of an element's metadata block that is not its identity (name
+        and domain are on the element). Follows the common metadata schema.
+      properties:
+        display_name:
+          $ref: "#/components/schemas/LocalizedText"
+        description:
+          $ref: "#/components/schemas/LocalizedText"
+        short_description:
+          $ref: "#/components/schemas/LocalizedText"
+        launch_stage:
+          type: string
+          enum: [preview, beta, ga, deprecated]
+        tags:
+          type: object
+          additionalProperties:
+            type: string
+        properties:
+          type: object
+          description: Additional properties of the element.
+          additionalProperties:
+            type: string
+    LocalizedText:
+      type: object
+      description: Text keyed by language, for example en_us and zh_cn.
+      additionalProperties:
+        type: string
     EntityWriteBatch:
       type: object
       required: [entities]

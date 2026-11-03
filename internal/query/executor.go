@@ -153,13 +153,19 @@ func (e *Executor) executeUModel(ctx context.Context, workspace string, plan mod
 	}
 	rows := make([]map[string]any, 0, len(snapshot.Elements))
 	for _, element := range snapshot.Elements {
-		rows = append(rows, map[string]any{
+		row := map[string]any{
 			"kind":    element.Kind,
 			"domain":  element.Domain,
 			"name":    element.Name,
 			"version": element.Version,
 			"spec":    element.Spec,
-		})
+		}
+		// Only present when the element has any, so rows of elements without
+		// metadata keep the shape they had.
+		if !element.Metadata.IsZero() {
+			row["metadata"] = element.Metadata
+		}
+		rows = append(rows, row)
 	}
 	return model.QueryResult{
 		Columns: []string{"kind", "domain", "name", "version"},

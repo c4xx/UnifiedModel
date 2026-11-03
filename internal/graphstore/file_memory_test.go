@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/alibaba/UnifiedModel/pkg/model"
@@ -183,5 +184,39 @@ func assertFileExists(t *testing.T, path string) {
 	t.Helper()
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("expected file %s: %v", path, err)
+	}
+}
+
+// Element metadata survives a restart of the file-backed store.
+func TestFileMemoryPersistsElementMetadata(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	cfg := ProviderConfig{Type: ProviderTypeFileMemory, DataRoot: root}
+
+	first, err := NewFileMemoryStore(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := &model.ElementMetadata{
+		DisplayName: map[string]string{"en_us": "Service", "zh_cn": "服务"},
+		LaunchStage: "ga",
+		Properties:  map[string]string{"host.depends": "src_on_dest"},
+	}
+	if _, err := first.PutUModelElements(ctx, model.UModelElementBatch{Workspace: "w", Elements: []model.UModelElement{{
+		Kind: "entity_set", Domain: "d", Name: "d.e", Version: "v0.1.0", Metadata: want,
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+
+	second, err := NewFileMemoryStore(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snap, err := second.GetUModelSnapshot(ctx, model.UModelSnapshotRequest{Workspace: "w"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snap.Elements) != 1 || !reflect.DeepEqual(snap.Elements[0].Metadata, want) {
+		t.Fatalf("after reopen: %+v, want metadata %+v", snap.Elements, want)
 	}
 }

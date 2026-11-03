@@ -623,6 +623,7 @@ func boolValue(value any) bool {
 
 func cloneUModelElement(element model.UModelElement) model.UModelElement {
 	element.Spec = cloneMap(element.Spec)
+	element.Metadata = element.Metadata.Clone()
 	return element
 }
 

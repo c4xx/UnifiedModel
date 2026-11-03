@@ -97,11 +97,66 @@ type WriteResult struct {
 }
 
 type UModelElement struct {
-	Kind    string         `json:"kind"`
-	Domain  string         `json:"domain"`
-	Name    string         `json:"name"`
-	Version string         `json:"version,omitempty"`
-	Spec    map[string]any `json:"spec,omitempty"`
+	Kind    string `json:"kind"`
+	Domain  string `json:"domain"`
+	Name    string `json:"name"`
+	Version string `json:"version,omitempty"`
+	// Metadata carries the rest of the element's metadata block (display name,
+	// description, tags, additional properties). name and domain stay on the
+	// element itself. Nil when the element had none.
+	Metadata *ElementMetadata `json:"metadata,omitempty"`
+	Spec     map[string]any   `json:"spec,omitempty"`
+}
+
+// ElementMetadata is the part of an element's metadata block that is not its
+// identity. The fields follow the common metadata schema
+// (schemas/includes/metadata.schema.yaml).
+type ElementMetadata struct {
+	// DisplayName, Description and ShortDescription are bilingual text keyed by
+	// language (en_us, zh_cn).
+	DisplayName      map[string]string `json:"display_name,omitempty"`
+	Description      map[string]string `json:"description,omitempty"`
+	ShortDescription map[string]string `json:"short_description,omitempty"`
+	// LaunchStage is preview, beta, ga or deprecated.
+	LaunchStage string `json:"launch_stage,omitempty"`
+	// Tags are labels on the element.
+	Tags map[string]string `json:"tags,omitempty"`
+	// Properties are additional properties of the element. A host application
+	// can use them for its own declarations, for example a reasoning engine
+	// recording which relations propagate faults.
+	Properties map[string]string `json:"properties,omitempty"`
+}
+
+// IsZero reports whether no field is set.
+func (m *ElementMetadata) IsZero() bool {
+	return m == nil || (len(m.DisplayName) == 0 && len(m.Description) == 0 && len(m.ShortDescription) == 0 &&
+		m.LaunchStage == "" && len(m.Tags) == 0 && len(m.Properties) == 0)
+}
+
+// Clone returns a deep copy.
+func (m *ElementMetadata) Clone() *ElementMetadata {
+	if m == nil {
+		return nil
+	}
+	return &ElementMetadata{
+		DisplayName:      cloneStringMap(m.DisplayName),
+		Description:      cloneStringMap(m.Description),
+		ShortDescription: cloneStringMap(m.ShortDescription),
+		LaunchStage:      m.LaunchStage,
+		Tags:             cloneStringMap(m.Tags),
+		Properties:       cloneStringMap(m.Properties),
+	}
+}
+
+func cloneStringMap(in map[string]string) map[string]string {
+	if in == nil {
+		return nil
+	}
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
 }
 
 func UModelElementKey(element UModelElement) string {

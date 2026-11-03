@@ -33,7 +33,7 @@ type workspaceHandle struct {
 }
 
 const (
-	upsertUModelNodeStatement = `MERGE (n:umodel_node {key: $key}) SET n.kind = $kind, n.domain = $domain, n.name = $name, n.version = $version, n.spec = $spec;`
+	upsertUModelNodeStatement = `MERGE (n:umodel_node {key: $key}) SET n.kind = $kind, n.domain = $domain, n.name = $name, n.version = $version, n.spec = $spec, n.metadata = $metadata;`
 	deleteUModelNodeStatement = `MATCH (n:umodel_node {key: $key}) DELETE n;`
 	upsertEntityStatement     = `MERGE (e:entity {entity_key: $entity_key}) SET e.domain = $domain, e.entity_type = $entity_type, e.entity_id = $entity_id, e.method = $method, e.first_observed_time = $first_observed_time, e.last_observed_time = $last_observed_time, e.keep_alive_seconds = $keep_alive_seconds, e.deleted = $deleted, e.properties = $properties;`
 	upsertTopoStatement       = `MATCH (s:entity {entity_key: $src_key}), (d:entity {entity_key: $dest_key}) MERGE (s)-[r:topo {relation_key: $relation_key}]->(d) SET r.relation_type = $relation_type, r.method = $method, r.first_observed_time = $first_observed_time, r.last_observed_time = $last_observed_time, r.keep_alive_seconds = $keep_alive_seconds, r.deleted = $deleted, r.properties = $properties;`
@@ -99,13 +99,19 @@ func (p *Provider) PutUModelElements(ctx context.Context, batch model.UModelElem
 	for _, element := range batch.Elements {
 		key := model.UModelElementKey(element)
 		spec, _ := json.Marshal(element.Spec)
+		metadata := ""
+		if !element.Metadata.IsZero() {
+			b, _ := json.Marshal(element.Metadata)
+			metadata = string(b)
+		}
 		res, err := conn.Execute(stmt, map[string]any{
-			"key":     key,
-			"kind":    element.Kind,
-			"domain":  element.Domain,
-			"name":    element.Name,
-			"version": element.Version,
-			"spec":    string(spec),
+			"key":      key,
+			"kind":     element.Kind,
+			"domain":   element.Domain,
+			"name":     element.Name,
+			"version":  element.Version,
+			"spec":     string(spec),
+			"metadata": metadata,
 		})
 		if err != nil {
 			return model.WriteResult{}, err
@@ -157,7 +163,7 @@ func (p *Provider) GetUModelSnapshot(ctx context.Context, req model.UModelSnapsh
 	if err != nil {
 		return model.UModelSnapshot{}, err
 	}
-	rows, err := runRows(conn, `MATCH (n:umodel_node) RETURN n.kind AS kind, n.domain AS domain, n.name AS name, n.version AS version, n.spec AS spec ORDER BY n.key;`, nil)
+	rows, err := runRows(conn, `MATCH (n:umodel_node) RETURN n.kind AS kind, n.domain AS domain, n.name AS name, n.version AS version, n.spec AS spec, n.metadata AS metadata ORDER BY n.key;`, nil)
 	if err != nil {
 		return model.UModelSnapshot{}, err
 	}
@@ -165,12 +171,20 @@ func (p *Provider) GetUModelSnapshot(ctx context.Context, req model.UModelSnapsh
 	for _, row := range rows {
 		spec := map[string]any{}
 		_ = json.Unmarshal([]byte(asString(row["spec"])), &spec)
+		var metadata *model.ElementMetadata
+		if text := asString(row["metadata"]); text != "" {
+			metadata = &model.ElementMetadata{}
+			if err := json.Unmarshal([]byte(text), metadata); err != nil || metadata.IsZero() {
+				metadata = nil
+			}
+		}
 		elements = append(elements, model.UModelElement{
-			Kind:    asString(row["kind"]),
-			Domain:  asString(row["domain"]),
-			Name:    asString(row["name"]),
-			Version: asString(row["version"]),
-			Spec:    spec,
+			Kind:     asString(row["kind"]),
+			Domain:   asString(row["domain"]),
+			Name:     asString(row["name"]),
+			Version:  asString(row["version"]),
+			Metadata: metadata,
+			Spec:     spec,
 		})
 	}
 	version := req.Version
@@ -420,7 +434,7 @@ func (p *Provider) ensureSchemaLocked(workspace string) error {
 		return fmt.Errorf("workspace %q is not open", workspace)
 	}
 	for _, statement := range []string{
-		`CREATE NODE TABLE IF NOT EXISTS umodel_node (key STRING, kind STRING, domain STRING, name STRING, version STRING, spec STRING, PRIMARY KEY(key));`,
+		`CREATE NODE TABLE IF NOT EXISTS umodel_node (key STRING, kind STRING, domain STRING, name STRING, version STRING, spec STRING, metadata STRING, PRIMARY KEY(key));`,
 		`CREATE NODE TABLE IF NOT EXISTS entity (entity_key STRING, domain STRING, entity_type STRING, entity_id STRING, method STRING, first_observed_time INT64, last_observed_time INT64, keep_alive_seconds INT64, deleted BOOL, properties STRING, PRIMARY KEY(entity_key));`,
 		`CREATE REL TABLE IF NOT EXISTS topo (FROM entity TO entity, relation_key STRING, relation_type STRING, method STRING, first_observed_time INT64, last_observed_time INT64, keep_alive_seconds INT64, deleted BOOL, properties STRING);`,
 	} {
@@ -430,6 +444,28 @@ func (p *Provider) ensureSchemaLocked(workspace string) error {
 		}
 		res.Close()
 	}
+	return p.ensureMetadataColumnLocked(handle)
+}
+
+// ensureMetadataColumnLocked adds the metadata column to an umodel_node table
+// created before elements carried metadata. CREATE ... IF NOT EXISTS leaves an
+// existing table as it was, so without this an old database would fail on the
+// first write.
+func (p *Provider) ensureMetadataColumnLocked(handle *workspaceHandle) error {
+	rows, err := runRows(handle.conn, `CALL TABLE_INFO('umodel_node') RETURN *;`, nil)
+	if err != nil {
+		return err
+	}
+	for _, row := range rows {
+		if asString(row["name"]) == "metadata" {
+			return nil
+		}
+	}
+	res, err := handle.conn.Query(`ALTER TABLE umodel_node ADD metadata STRING;`)
+	if err != nil {
+		return err
+	}
+	res.Close()
 	return nil
 }
 
