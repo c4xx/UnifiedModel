@@ -26,6 +26,7 @@ from .sls_logstore import *
 from .external_storage import *
 from .prometheus import *
 from .victoriametrics import *
+from .loki import *
 from .sls_metricstore import *
 from .explorer_link import *
 from .runbook_link import *

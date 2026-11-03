@@ -14,6 +14,7 @@ func TestDefaultFamilyForKind(t *testing.T) {
 		"prometheus":        "label-timeseries",
 		"aliyun_prometheus": "label-timeseries",
 		"elasticsearch":     "document-search",
+		"loki":              "label-logs",
 		"mysql":             "", // discoverable, no built-in family
 		"victoriametrics":   "", // new kind: no default, must declare spec.family
 	}
@@ -39,6 +40,8 @@ func TestDefaultRegistryResolvesFamilies(t *testing.T) {
 		{"document-search", planrender.MethodGetMetrics, false}, // log family, not metrics
 		{"sql-table", planrender.MethodGetMetrics, true},        // SQL metrics family
 		{"sql-table", planrender.MethodGetLogs, false},          // sql-table is metrics-only for now
+		{"label-logs", planrender.MethodGetLogs, true},          // LogQL log family
+		{"label-logs", planrender.MethodGetMetrics, false},      // log family, not metrics
 		{"", planrender.MethodGetMetrics, false},                // passthrough
 	}
 	for _, c := range cases {

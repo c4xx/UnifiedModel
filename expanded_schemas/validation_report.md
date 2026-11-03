@@ -3,8 +3,8 @@
 基于 `schemas/base.yaml` 中定义的元数据规范进行验证
 
 ## 📊 验证统计
-- 总文件数: 25
-- 验证通过: 25
+- 总文件数: 26
+- 验证通过: 26
 - 有错误: 0
 - 有警告: 0
 
@@ -31,6 +31,9 @@
 ✅ **状态**: 验证通过
 
 ### elasticsearch.expanded.yaml
+✅ **状态**: 验证通过
+
+### loki.expanded.yaml
 ✅ **状态**: 验证通过
 
 ### explorer_link.expanded.yaml

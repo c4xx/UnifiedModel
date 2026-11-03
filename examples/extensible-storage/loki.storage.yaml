@@ -1,0 +1,22 @@
+kind: loki
+schema:
+  url: "umodel.aliyun.com"
+  version: "v1.0.0"
+metadata:
+  name: "devops.loki.core"
+  domain: devops
+  display_name:
+    en_us: "DevOps Loki"
+    zh_cn: "DevOps Loki"
+  description:
+    en_us: "Grafana Loki endpoint. get_logs renders a LogQL stream selector through the label-logs query family; no spec.family is needed because the loki kind routes there by default."
+    zh_cn: "Grafana Loki 端点。get_logs 通过 label-logs 查询家族渲染出 LogQL 流选择器；loki 这个 kind 默认路由到该家族，无需声明 spec.family。"
+spec:
+  endpoint: "http://localhost:3100"
+  api_prefix: "/loki/api/v1"
+  default_direction: backward
+  default_limit: 1000
+  tenant_header: X-Scope-OrgID
+  tags:
+    sample: extensible-storage
+    role: logs

@@ -1,0 +1,312 @@
+description:
+  zh_cn: Loki 存储，用于描述 Loki 或 LogQL 兼容日志后端的配置和查询规划信息。get_logs 默认通过 label-logs 查询家族渲染出 LogQL 查询计划，UModel 不直接执行查询，也不保存明文凭据。
+  en_us: Loki storage, used to define Loki or LogQL-compatible log backend metadata for query planning. get_logs renders a LogQL query plan through the label-logs query family by default; UModel does not execute queries or store plaintext credentials.
+name: loki
+versions:
+  - name: v1.0.0
+    spec:
+      type: object
+      properties:
+        kind:
+          type: string
+          constraint:
+            required: true
+            enum:
+              values:
+                - loki
+        schema:
+          type: object
+          extends:
+            - schema:v1
+          constraint:
+            required: true
+        metadata:
+          type: object
+          extends:
+            - metadata:v1
+          constraint:
+            required: true
+        spec:
+          type: object
+          constraint:
+            required: true
+          description:
+            zh_cn: Loki 的核心配置部分。UModel 只使用这些字段生成 LogQL 查询计划，不直接执行查询，也不保存明文凭据。
+            en_us: The specification section for Loki. UModel uses these fields to generate LogQL query plans only; it does not execute queries or store plaintext credentials.
+          properties:
+            family:
+              description:
+                zh_cn: 该存储渲染所用的查询家族。默认 label-logs，即 LogQL 日志查询；兼容 LogQL 的其他后端也可以复用它。
+                en_us: The query family this storage renders through. Defaults to label-logs (LogQL log queries); other LogQL-compatible backends can reuse it.
+              type: string
+              constraint:
+                default_value: label-logs
+            endpoint:
+              description:
+                zh_cn: Loki 或 LogQL 兼容服务的访问地址，例如 http://loki:3100。
+                en_us: The endpoint URL of Loki or a LogQL-compatible service, for example http://loki:3100.
+              type: string
+              constraint:
+                required: true
+            api_prefix:
+              description:
+                zh_cn: Loki HTTP API 前缀。默认值为 /loki/api/v1。
+                en_us: Loki HTTP API prefix. Defaults to /loki/api/v1.
+              type: string
+              constraint:
+                default_value: /loki/api/v1
+            default_direction:
+              description:
+                zh_cn: 默认返回顺序。backward 表示从新到旧，forward 表示从旧到新。
+                en_us: Default result order. backward returns newest first, forward returns oldest first.
+              type: string
+              constraint:
+                enum:
+                  values:
+                    - backward
+                    - forward
+                default_value: backward
+            default_limit:
+              description:
+                zh_cn: 未指定条数时的默认最大返回条数。
+                en_us: Default maximum number of log lines when the request gives no limit.
+              type: integer
+            tenant:
+              description:
+                zh_cn: 可选租户标识，对应多租户 Loki 的 X-Scope-OrgID。
+                en_us: Optional tenant identifier, the X-Scope-OrgID of a multi-tenant Loki.
+              type: string
+            tenant_header:
+              description:
+                zh_cn: 多租户系统使用的租户 HTTP 头名称，例如 X-Scope-OrgID。
+                en_us: Tenant HTTP header name used by multi-tenant systems, for example X-Scope-OrgID.
+              type: string
+            credential_ref:
+              description:
+                zh_cn: 凭据引用标识，例如 secret://loki-prod-readonly。不得在 UModel 中保存明文用户名、密码或 Token。
+                en_us: Credential reference, for example secret://loki-prod-readonly. Plaintext usernames, passwords, or tokens must not be stored in UModel.
+              type: string
+            tls_verify:
+              description:
+                zh_cn: 是否校验 TLS 证书。默认值为 true。
+                en_us: Whether TLS certificates should be verified. Defaults to true.
+              type: boolean
+              constraint:
+                default_value: true
+            external_labels:
+              description:
+                zh_cn: 外部标签，用于 query planning 时补充查询上下文或结果来源说明。
+                en_us: External labels used to enrich query-planning context or describe result origin.
+              type: map
+              constraint:
+                map:
+                  key:
+                    type: string
+                  value:
+                    type: string
+            headers:
+              description:
+                zh_cn: 非敏感 HTTP 头，用于租户、路由等查询上下文。不得存放认证密钥。
+                en_us: Non-sensitive HTTP headers for tenant or routing context. Authentication secrets must not be stored here.
+              type: map
+              constraint:
+                map:
+                  key:
+                    type: string
+                  value:
+                    type: string
+            properties:
+              description:
+                zh_cn: Loki 的额外非敏感配置，以键值对形式存储。
+                en_us: Additional non-sensitive Loki configuration, stored as key-value pairs.
+              type: map
+              constraint:
+                map:
+                  key:
+                    type: string
+                  value:
+                    type: string
+            tags:
+              description:
+                zh_cn: 用于标注该 Loki 存储的标签。
+                en_us: Tags used to describe this Loki storage.
+              type: map
+              constraint:
+                map:
+                  key:
+                    type: string
+                  value:
+                    type: string
+            credential_ref:
+              description:
+                zh_cn: 凭据引用标识，例如 secret://loki-prod-readonly。不得在 UModel 中保存明文用户名、密码或 Token。
+                en_us: Credential reference, for example secret://loki-prod-readonly. Plaintext usernames, passwords, or tokens must not be stored in UModel.
+              type: string
+            tls_verify:
+              description:
+                zh_cn: 是否校验 TLS 证书。默认值为 true。
+                en_us: Whether TLS certificates should be verified. Defaults to true.
+              type: boolean
+              constraint:
+                default_value: true
+            external_labels:
+              description:
+                zh_cn: 外部标签，用于 query planning 时补充查询上下文或结果来源说明。
+                en_us: External labels used to enrich query-planning context or describe result origin.
+              type: map
+              constraint:
+                map:
+                  key:
+                    type: string
+                  value:
+                    type: string
+            headers:
+              description:
+                zh_cn: 非敏感 HTTP 头，用于租户、路由等查询上下文。不得存放认证密钥。
+                en_us: Non-sensitive HTTP headers for tenant or routing context. Authentication secrets must not be stored here.
+              type: map
+              constraint:
+                map:
+                  key:
+                    type: string
+                  value:
+                    type: string
+            properties:
+              description:
+                zh_cn: Loki 的额外非敏感配置，以键值对形式存储。
+                en_us: Additional non-sensitive Loki configuration, stored as key-value pairs.
+              type: map
+              constraint:
+                map:
+                  key:
+                    type: string
+                  value:
+                    type: string
+            tags:
+              description:
+                zh_cn: 用于标注该 Loki 存储的标签。
+                en_us: Tags used to describe this Loki storage.
+              type: map
+              constraint:
+                map:
+                  key:
+                    type: string
+                  value:
+                    type: string
+            tls_verify:
+              description:
+                zh_cn: 是否校验 TLS 证书。默认值为 true。
+                en_us: Whether TLS certificates should be verified. Defaults to true.
+              type: boolean
+              constraint:
+                default_value: true
+            external_labels:
+              description:
+                zh_cn: 外部标签，用于 query planning 时补充查询上下文或结果来源说明。
+                en_us: External labels used to enrich query-planning context or describe result origin.
+              type: map
+              constraint:
+                map:
+                  key:
+                    type: string
+                  value:
+                    type: string
+            headers:
+              description:
+                zh_cn: 非敏感 HTTP 头，用于租户、路由等查询上下文。不得存放认证密钥。
+                en_us: Non-sensitive HTTP headers for tenant or routing context. Authentication secrets must not be stored here.
+              type: map
+              constraint:
+                map:
+                  key:
+                    type: string
+                  value:
+                    type: string
+            properties:
+              description:
+                zh_cn: Loki 的额外非敏感配置，以键值对形式存储。
+                en_us: Additional non-sensitive Loki configuration, stored as key-value pairs.
+              type: map
+              constraint:
+                map:
+                  key:
+                    type: string
+                  value:
+                    type: string
+            tags:
+              description:
+                zh_cn: 用于标注该 Loki 存储的标签。
+                en_us: Tags used to describe this Loki storage.
+              type: map
+              constraint:
+                map:
+                  key:
+                    type: string
+                  value:
+                    type: string
+            headers:
+              description:
+                zh_cn: 非敏感 HTTP 头，用于租户、路由等查询上下文。不得存放认证密钥。
+                en_us: Non-sensitive HTTP headers for tenant or routing context. Authentication secrets must not be stored here.
+              type: map
+              constraint:
+                map:
+                  key:
+                    type: string
+                  value:
+                    type: string
+            properties:
+              description:
+                zh_cn: Loki 的额外非敏感配置，以键值对形式存储。
+                en_us: Additional non-sensitive Loki configuration, stored as key-value pairs.
+              type: map
+              constraint:
+                map:
+                  key:
+                    type: string
+                  value:
+                    type: string
+            tags:
+              description:
+                zh_cn: 用于标注该 Loki 存储的标签。
+                en_us: Tags used to describe this Loki storage.
+              type: map
+              constraint:
+                map:
+                  key:
+                    type: string
+                  value:
+                    type: string
+            properties:
+              description:
+                zh_cn: Loki 的额外非敏感配置，以键值对形式存储。
+                en_us: Additional non-sensitive Loki configuration, stored as key-value pairs.
+              type: map
+              constraint:
+                map:
+                  key:
+                    type: string
+                  value:
+                    type: string
+            tags:
+              description:
+                zh_cn: 用于标注该 Loki 存储的标签。
+                en_us: Tags used to describe this Loki storage.
+              type: map
+              constraint:
+                map:
+                  key:
+                    type: string
+                  value:
+                    type: string
+            tags:
+              description:
+                zh_cn: 用于标注该 Loki 存储的标签。
+                en_us: Tags used to describe this Loki storage.
+              type: map
+              constraint:
+                map:
+                  key:
+                    type: string
+                  value:
+                    type: string
