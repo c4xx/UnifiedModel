@@ -218,6 +218,45 @@ Workspace 元数据单独保存在：
 <data-root>/workspaces.json
 ```
 
+## 来自其他模块的 Provider
+
+Provider 注册表是公开的（`pkg/graphstore`），嵌入 UModel 的 Go 模块可以在服务启动前注册自己的 `GraphStore`。内置 provider 仍在 `internal/graphstore` 下，并向同一个注册表注册。
+
+```go
+import (
+	"github.com/alibaba/UnifiedModel/pkg/contract"
+	"github.com/alibaba/UnifiedModel/pkg/graphstore"
+)
+
+func init() {
+	graphstore.RegisterProvider("my.store", func(cfg graphstore.ProviderConfig) (contract.GraphStore, error) {
+		return newMyStore(cfg) // cfg.DataRoot 和 cfg.Options 由调用方传入
+	})
+}
+```
+
+名字为空或 factory 为 nil 时 `RegisterProvider` 会 panic。同一个名字注册两次，后者替换前者。
+
+### 声明持久化方式
+
+什么都不声明的 store 按“仅内存”处理：workspace 元数据不落盘，启动时也不恢复任何索引。把数据存在数据库里的 store 应实现可选接口 `contract.PersistentProvider`：
+
+```go
+func (s *myStore) PersistenceMode() contract.PersistenceMode {
+	return contract.PersistenceMode{
+		PersistWorkspaceMetadata: true, // 重启后保留 <data-root>/workspaces.json
+		RestoreDerivedIndexes:    true, // 启动时按已存储的实体重建搜索和 schema 索引
+		DiscoverWorkspaces: func(dataRoot string) ([]contract.WorkspaceDiscovery, error) {
+			return s.listWorkspacesInDatabase() // 可选；为 nil 表示“没有要发现的”
+		},
+	}
+}
+```
+
+- 实现了该接口的 store 自己负责这些行为，不会继承碰巧同名的内置 provider 的目录发现逻辑。
+- 没有实现该接口的 store，保持该接口出现之前的行为，按 provider 名字选择。内置的 `memory`、`file.memory`、`local.ladybug`、`neo4j`、`gremlin` 行为不变。
+- `local.ladybug` 一直不在启动时恢复派生索引，现在仍然不恢复。
+
 ## 边界
 
 - `file.memory` 面向单本地进程，不要让多个 writer 写同一个目录。

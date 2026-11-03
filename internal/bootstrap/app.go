@@ -90,17 +90,18 @@ func NewAppWithGraphStore(dataRoot string, config graphstore.ProviderConfig, opt
 		providerType = graphstore.DefaultProviderType
 		config.Type = providerType
 	}
-	workspaceSvc := workspace.NewService(dataRoot, nil)
-	if providerType == graphstore.ProviderTypeFileMemory || providerType == graphstore.ProviderTypeLadybug || providerType == graphstore.ProviderTypeNeo4j || providerType == graphstore.ProviderTypeGremlin {
-		var err error
-		workspaceSvc, err = workspace.NewPersistentServiceForProvider(dataRoot, nil, providerType)
-		if err != nil {
-			return nil, fmt.Errorf("create workspace metadata store: %w", err)
-		}
-	}
 	graph, err := graphstore.NewProvider(config)
 	if err != nil {
 		return nil, fmt.Errorf("create graphstore provider: %w", err)
+	}
+	mode := persistenceModeOf(graph, providerType)
+	workspaceSvc := workspace.NewService(dataRoot, nil)
+	if mode.PersistWorkspaceMetadata {
+		workspaceSvc, err = workspace.NewPersistentServiceWithDiscovery(dataRoot, nil, discoveryOf(graph, mode, providerType))
+		if err != nil {
+			_ = closeGraph(graph)
+			return nil, fmt.Errorf("create workspace metadata store: %w", err)
+		}
 	}
 	searchProvider, err := search.NewProvider(search.ProviderConfig{Type: search.ProviderTypeMemory, DataRoot: dataRoot})
 	if err != nil {
@@ -123,7 +124,7 @@ func NewAppWithGraphStore(dataRoot string, config graphstore.ProviderConfig, opt
 		Search:       searchSvc,
 		AgentGateway: agentSvc,
 	}
-	if providerType == graphstore.ProviderTypeGremlin || providerType == graphstore.ProviderTypeNeo4j || providerType == graphstore.ProviderTypeFileMemory {
+	if mode.RestoreDerivedIndexes {
 		if err := restoreDerivedIndexes(context.Background(), app); err != nil {
 			_ = app.Close()
 			return nil, fmt.Errorf("restore persisted search and schema indexes: %w", err)
@@ -134,7 +135,11 @@ func NewAppWithGraphStore(dataRoot string, config graphstore.ProviderConfig, opt
 
 // Close releases provider connections when an embedded app or MCP session ends.
 func (a *App) Close() error {
-	switch closer := a.GraphStore.(type) {
+	return closeGraph(a.GraphStore)
+}
+
+func closeGraph(graph contract.GraphStore) error {
+	switch closer := graph.(type) {
 	case interface{ Close() error }:
 		return closer.Close()
 	case interface{ Close() }:

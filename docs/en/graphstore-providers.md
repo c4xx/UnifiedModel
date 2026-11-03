@@ -231,6 +231,45 @@ the split workspace layout.
 
 Current entity and topology queries hide expired/deleted rows unless a historical `time_range` is supplied. The expired/deleted records are still kept in the file so historical queries can read them after restart.
 
+## Providers From Another Module
+
+The provider registry is public (`pkg/graphstore`), so a Go module that embeds UModel can register its own `GraphStore` before the service starts. Built-in providers stay under `internal/graphstore` and register themselves in the same registry.
+
+```go
+import (
+	"github.com/alibaba/UnifiedModel/pkg/contract"
+	"github.com/alibaba/UnifiedModel/pkg/graphstore"
+)
+
+func init() {
+	graphstore.RegisterProvider("my.store", func(cfg graphstore.ProviderConfig) (contract.GraphStore, error) {
+		return newMyStore(cfg) // cfg.DataRoot and cfg.Options come from the caller
+	})
+}
+```
+
+`RegisterProvider` panics on an empty name or a nil factory. Registering a name twice replaces the earlier factory.
+
+### Declaring persistence
+
+A store that does not say anything is treated as memory only: workspace metadata is not written to disk and no index is restored at startup. A store that keeps its data in a database should implement the optional `contract.PersistentProvider` interface:
+
+```go
+func (s *myStore) PersistenceMode() contract.PersistenceMode {
+	return contract.PersistenceMode{
+		PersistWorkspaceMetadata: true, // keep <data-root>/workspaces.json across restarts
+		RestoreDerivedIndexes:    true, // rebuild search and schema indexes from stored entities at startup
+		DiscoverWorkspaces: func(dataRoot string) ([]contract.WorkspaceDiscovery, error) {
+			return s.listWorkspacesInDatabase() // optional; nil means "nothing to discover"
+		},
+	}
+}
+```
+
+- A store that implements the interface owns its behavior. It does not inherit the discovery of a built-in provider that happens to share its name.
+- A store that does not implement it keeps the behavior it had before this interface existed, selected by provider name. The built-in `memory`, `file.memory`, `local.ladybug`, `neo4j` and `gremlin` are unchanged.
+- `local.ladybug` has never restored derived indexes at startup, and still does not.
+
 ## Scope And Limits
 
 - `file.memory` persists GraphStore data: UModel elements, entities, and relations.

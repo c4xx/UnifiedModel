@@ -1,10 +1,8 @@
 package graphstore
 
 import (
-	"fmt"
-	"sync"
-
 	"github.com/alibaba/UnifiedModel/pkg/contract"
+	pubgraphstore "github.com/alibaba/UnifiedModel/pkg/graphstore"
 )
 
 const (
@@ -16,52 +14,29 @@ const (
 	DefaultProviderType    = ProviderTypeLadybug
 )
 
-type ProviderConfig struct {
-	Type     string
-	DataRoot string
-	Options  map[string]string
-}
-
-type ProviderFactory func(config ProviderConfig) (contract.GraphStore, error)
-
-var (
-	registryMu sync.RWMutex
-	registry   = map[string]ProviderFactory{}
+// The registry itself is public (pkg/graphstore) so providers outside this
+// module can register. These aliases and forwarding functions keep the
+// internal API unchanged: built-in providers and tests keep calling
+// graphstore.RegisterProvider and friends.
+type (
+	ProviderConfig  = pubgraphstore.ProviderConfig
+	ProviderFactory = pubgraphstore.ProviderFactory
 )
 
 func RegisterProvider(providerType string, factory ProviderFactory) {
-	registryMu.Lock()
-	defer registryMu.Unlock()
-	registry[providerType] = factory
+	pubgraphstore.RegisterProvider(providerType, factory)
 }
 
 func NewProvider(config ProviderConfig) (contract.GraphStore, error) {
-	providerType := config.Type
-	if providerType == "" {
-		providerType = DefaultProviderType
-	}
-
-	registryMu.RLock()
-	factory := registry[providerType]
-	registryMu.RUnlock()
-	if factory == nil {
-		return nil, fmt.Errorf("graphstore provider %q is not registered", providerType)
-	}
-	return factory(config)
+	return pubgraphstore.NewProvider(config)
 }
 
 func RegisteredProviders() []string {
-	registryMu.RLock()
-	defer registryMu.RUnlock()
-
-	providers := make([]string, 0, len(registry))
-	for providerType := range registry {
-		providers = append(providers, providerType)
-	}
-	return providers
+	return pubgraphstore.RegisteredProviders()
 }
 
 func init() {
+	pubgraphstore.SetDefaultProvider(DefaultProviderType)
 	RegisterProvider(ProviderTypeMemory, func(config ProviderConfig) (contract.GraphStore, error) {
 		return NewMemoryStore(), nil
 	})

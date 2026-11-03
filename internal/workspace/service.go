@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/alibaba/UnifiedModel/pkg/contract"
 	apperrors "github.com/alibaba/UnifiedModel/pkg/errors"
 	"github.com/alibaba/UnifiedModel/pkg/model"
 )
@@ -342,96 +343,98 @@ func (s *Service) loadLocked() error {
 	return nil
 }
 
-func (s *Service) recoverProviderWorkspaceDirsLocked(providerType string) (bool, error) {
+// Discovery finds workspaces that exist in the graph store but not in the
+// persisted metadata. See contract.PersistenceMode.DiscoverWorkspaces.
+type Discovery func(dataRoot string) ([]contract.WorkspaceDiscovery, error)
+
+// NewPersistentServiceWithDiscovery creates a persistent workspace metadata
+// service that uses discover, which may be nil, to recover workspaces the
+// metadata file does not list. It is the entry point for providers that
+// declare their own discovery through contract.PersistentProvider.
+func NewPersistentServiceWithDiscovery(root string, configRules WorkspaceConfigValidator, discover Discovery) (*Service, error) {
+	s := NewService(root, configRules)
+	s.statePath = filepath.Join(s.rootOrDefault(), "workspaces.json")
+	if err := s.loadLocked(); err != nil {
+		return nil, err
+	}
+	recovered := false
+	if discover != nil {
+		found, err := discover(s.rootOrDefault())
+		if err != nil {
+			return nil, err
+		}
+		for _, w := range found {
+			did, err := s.recoverWorkspaceLocked(w.ID, w.ModTime)
+			if err != nil {
+				return nil, err
+			}
+			recovered = recovered || did
+		}
+	}
+	if recovered {
+		if err := s.persistLocked(); err != nil {
+			return nil, err
+		}
+	}
+	return s, nil
+}
+
+// BuiltinDiscovery returns the discovery used by the built-in providers, by
+// name. Unknown names get nil. Providers outside this module declare their own
+// through contract.PersistentProvider instead.
+func BuiltinDiscovery(providerType string) Discovery {
 	switch providerType {
 	case "", providerTypeFileMemory:
-		return s.recoverFileMemoryWorkspaceDirsLocked()
+		return func(root string) ([]contract.WorkspaceDiscovery, error) {
+			return listWorkspaceDirs(filepath.Join(rootOr(root), "graphstore", "file-memory", "workspaces"), "file memory workspace directories")
+		}
 	case providerTypeLadybug:
-		return s.recoverLadybugWorkspaceDirsLocked()
+		return func(root string) ([]contract.WorkspaceDiscovery, error) {
+			return listLadybugWorkspaces(rootOr(root))
+		}
 	default:
+		return nil
+	}
+}
+
+func rootOr(root string) string {
+	if root == "" {
+		return "data"
+	}
+	return root
+}
+
+func (s *Service) recoverProviderWorkspaceDirsLocked(providerType string) (bool, error) {
+	discover := BuiltinDiscovery(providerType)
+	if discover == nil {
 		return false, nil
 	}
-}
-
-func (s *Service) recoverFileMemoryWorkspaceDirsLocked() (bool, error) {
-	return s.recoverWorkspaceDirsLocked(
-		filepath.Join(s.rootOrDefault(), "graphstore", "file-memory", "workspaces"),
-		"file memory workspace directories",
-	)
-}
-
-func (s *Service) recoverLadybugWorkspaceDirsLocked() (bool, error) {
-	root := filepath.Join(s.rootOrDefault(), "instances")
-	entries, err := os.ReadDir(root)
+	found, err := discover(s.rootOrDefault())
 	if err != nil {
-		if os.IsNotExist(err) {
-			return false, nil
-		}
-		return false, fmt.Errorf("read ladybug workspace root: %w", err)
+		return false, err
 	}
-
 	recovered := false
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		id := entry.Name()
-		graphPath := filepath.Join(root, id, "storage", "graph", "local", "ladybug")
-		info, err := os.Stat(graphPath)
-		if err != nil {
-			if os.IsNotExist(err) {
-				continue
-			}
-			return false, fmt.Errorf("stat ladybug workspace directory: %w", err)
-		}
-		if !info.IsDir() {
-			continue
-		}
-		didRecover, err := s.recoverWorkspaceDirLocked(id, info)
+	for _, w := range found {
+		did, err := s.recoverWorkspaceLocked(w.ID, w.ModTime)
 		if err != nil {
 			return false, err
 		}
-		recovered = recovered || didRecover
+		recovered = recovered || did
 	}
 	return recovered, nil
 }
 
-func (s *Service) recoverWorkspaceDirsLocked(root string, description string) (bool, error) {
-	entries, err := os.ReadDir(root)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return false, nil
-		}
-		return false, fmt.Errorf("read %s: %w", description, err)
-	}
-
-	recovered := false
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		info, err := entry.Info()
-		if err != nil {
-			return false, fmt.Errorf("read %s info: %w", description, err)
-		}
-		didRecover, err := s.recoverWorkspaceDirLocked(entry.Name(), info)
-		if err != nil {
-			return false, err
-		}
-		recovered = recovered || didRecover
-	}
-	return recovered, nil
-}
-
-func (s *Service) recoverWorkspaceDirLocked(id string, info os.FileInfo) (bool, error) {
+// recoverWorkspaceLocked adds a workspace found in the store. A workspace that
+// already has metadata, including a deleted one, is left alone.
+func (s *Service) recoverWorkspaceLocked(id string, modTime time.Time) (bool, error) {
 	if _, exists := s.workspaces[id]; exists {
 		return false, nil
 	}
 	if err := validateWorkspaceID(id); err != nil {
 		return false, err
 	}
-	now := info.ModTime().UTC()
-	if now.IsZero() {
+	now := modTime.UTC()
+	if modTime.IsZero() {
 		now = time.Now().UTC()
 	}
 	s.workspaces[id] = model.WorkspaceMetadata{
@@ -444,6 +447,63 @@ func (s *Service) recoverWorkspaceDirLocked(id string, info os.FileInfo) (bool, 
 		UpdatedAt:       now,
 	}
 	return true, nil
+}
+
+// listLadybugWorkspaces lists workspaces that have a ladybug graph directory.
+func listLadybugWorkspaces(dataRoot string) ([]contract.WorkspaceDiscovery, error) {
+	root := filepath.Join(dataRoot, "instances")
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("read ladybug workspace root: %w", err)
+	}
+
+	var found []contract.WorkspaceDiscovery
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		id := entry.Name()
+		graphPath := filepath.Join(root, id, "storage", "graph", "local", "ladybug")
+		info, err := os.Stat(graphPath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return nil, fmt.Errorf("stat ladybug workspace directory: %w", err)
+		}
+		if !info.IsDir() {
+			continue
+		}
+		found = append(found, contract.WorkspaceDiscovery{ID: id, ModTime: info.ModTime()})
+	}
+	return found, nil
+}
+
+// listWorkspaceDirs lists the sub-directories of root as workspaces.
+func listWorkspaceDirs(root string, description string) ([]contract.WorkspaceDiscovery, error) {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("read %s: %w", description, err)
+	}
+
+	var found []contract.WorkspaceDiscovery
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return nil, fmt.Errorf("read %s info: %w", description, err)
+		}
+		found = append(found, contract.WorkspaceDiscovery{ID: entry.Name(), ModTime: info.ModTime()})
+	}
+	return found, nil
 }
 
 func (s *Service) normalizeMetadata(metadata *model.WorkspaceMetadata) {

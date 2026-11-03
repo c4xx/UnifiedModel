@@ -2,6 +2,7 @@ package contract
 
 import (
 	"context"
+	"time"
 
 	"github.com/alibaba/UnifiedModel/pkg/model"
 )
@@ -35,6 +36,39 @@ type GraphStore interface {
 	QueryTopo(ctx context.Context, plan model.TopoQueryPlan) (model.QueryResult, error)
 	Capabilities(ctx context.Context) (model.GraphStoreCapabilities, error)
 	Health(ctx context.Context) (model.GraphStoreHealth, error)
+}
+
+// PersistenceMode describes how a GraphStore keeps data across restarts. The
+// service uses it at startup to decide what to restore. The zero value means
+// "in memory only", which is how the built-in memory provider behaves.
+type PersistenceMode struct {
+	// PersistWorkspaceMetadata keeps workspace metadata on disk under the data
+	// root and reloads it at startup.
+	PersistWorkspaceMetadata bool
+	// RestoreDerivedIndexes rebuilds the search and schema indexes at startup
+	// from the entities already in the store. Set it when the store holds data
+	// that the in-memory indexes have not seen yet.
+	RestoreDerivedIndexes bool
+	// DiscoverWorkspaces optionally reports workspace IDs that already exist in
+	// the store but are missing from the persisted metadata, so a lost or
+	// partial metadata file does not hide them. dataRoot is the service data
+	// directory. Return nil when there is nothing to discover. May be nil.
+	DiscoverWorkspaces func(dataRoot string) ([]WorkspaceDiscovery, error)
+}
+
+// WorkspaceDiscovery is a workspace found in the store at startup.
+type WorkspaceDiscovery struct {
+	ID string
+	// ModTime is used as the created/updated time of the recovered workspace.
+	// The zero value means "now".
+	ModTime time.Time
+}
+
+// PersistentProvider is an optional interface for a GraphStore. A store that
+// does not implement it is treated as one of the built-in providers, selected
+// by name, so existing providers keep their behavior unchanged.
+type PersistentProvider interface {
+	PersistenceMode() PersistenceMode
 }
 
 type UModelService interface {
