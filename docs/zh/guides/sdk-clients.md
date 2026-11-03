@@ -213,12 +213,46 @@ MCP envelope 保持 JSON-RPC。Tool/resource 文本 payload 使用 TOON（`text/
 
 参考：[MCP 参考](../reference/mcp.md)。示例：[examples/mcp](../../../examples/mcp/README.zh-CN.md)。
 
+## 嵌入到 Go 程序中
+
+Go 服务可以在进程内运行 UModel，把各服务当作函数调用，不需要第二个进程，也没有 HTTP 往返。`pkg/embed` 返回的 `Runtime` 的字段都是 `pkg/contract` 里的公开接口，宿主程序不会接触到任何 internal 包的类型。
+
+```go
+import (
+	"github.com/alibaba/UnifiedModel/pkg/embed"
+	"github.com/alibaba/UnifiedModel/pkg/graphstore"
+	"github.com/alibaba/UnifiedModel/pkg/model"
+)
+
+rt, err := embed.New("/data", graphstore.ProviderConfig{Type: "file.memory"})
+if err != nil {
+	return err
+}
+defer rt.Close()
+
+out, err := rt.Query.Execute(ctx, "prod", model.QueryRequest{Query: ".umodel | limit 5"})
+```
+
+| 字段 | 接口 | 用途 |
+|---|---|---|
+| `Workspace` | `contract.WorkspaceManager` | 创建和列出 workspace |
+| `UModel` | `contract.UModelService` | 校验、导入和写入模型元素 |
+| `Entities` | `contract.EntityWriteService` | 写入、过期和删除实体与关系 |
+| `Query` | `contract.QueryService` | 唯一读取路径：`.umodel`、`.entity`、`.entity_set`、`.topo` |
+| `Search` | `contract.SearchService` | 关键词、向量和混合检索 |
+| `Agent` | `contract.AgentGateway` | Agent 发现、工具和资源 |
+
+- 使用自己的 `GraphStore` 时，先用 `pkg/graphstore.RegisterProvider` 注册，再调用 `embed.New`。见 [GraphStore Providers](../graphstore-providers.md)。
+- `Runtime.Handler()` 用同一组服务提供 REST API 和 Web UI 端点。它是可选的，需要用 UModel 自带工具调试时再挂载。
+- 各服务在编译期与 `pkg/contract` 做了断言，服务的方法签名变化会让构建失败，而不是让宿主程序出错。
+
 ## 如何选择
 
 | 需求 | 入口 |
 |---|---|
 | 人工本地工作流 | CLI 或 Web UI |
 | HTTP 集成 | REST API 或 Go REST client |
+| Go 服务内直接函数调用 | `pkg/embed` |
 | 构造模型对象 | 生成的 SDK |
 | Agent 集成 | MCP / AgentGateway |
 | 契约检查 | OpenAPI 和 MCP schema |

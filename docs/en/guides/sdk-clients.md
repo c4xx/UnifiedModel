@@ -215,12 +215,46 @@ The MCP envelope stays JSON-RPC. Tool/resource text payloads use TOON (`text/too
 
 Reference: [MCP Reference](../reference/mcp.md). Examples: [examples/mcp](../../../examples/mcp/README.md).
 
+## Embedding In A Go Program
+
+A Go service can run UModel in-process and call the services as functions, with no second process and no HTTP hop. `pkg/embed` returns a `Runtime` whose fields are the public interfaces from `pkg/contract`, so the host never sees a type from an internal package.
+
+```go
+import (
+	"github.com/alibaba/UnifiedModel/pkg/embed"
+	"github.com/alibaba/UnifiedModel/pkg/graphstore"
+	"github.com/alibaba/UnifiedModel/pkg/model"
+)
+
+rt, err := embed.New("/data", graphstore.ProviderConfig{Type: "file.memory"})
+if err != nil {
+	return err
+}
+defer rt.Close()
+
+out, err := rt.Query.Execute(ctx, "prod", model.QueryRequest{Query: ".umodel | limit 5"})
+```
+
+| Field | Interface | Use |
+|---|---|---|
+| `Workspace` | `contract.WorkspaceManager` | Create and list workspaces |
+| `UModel` | `contract.UModelService` | Validate, import and write model elements |
+| `Entities` | `contract.EntityWriteService` | Write, expire and delete entities and relations |
+| `Query` | `contract.QueryService` | The only read path: `.umodel`, `.entity`, `.entity_set`, `.topo` |
+| `Search` | `contract.SearchService` | Keyword, vector and hybrid search |
+| `Agent` | `contract.AgentGateway` | Agent discovery, tools and resources |
+
+- To use your own `GraphStore`, register it with `pkg/graphstore.RegisterProvider` before calling `embed.New`. See [GraphStore Providers](../graphstore-providers.md).
+- `Runtime.Handler()` serves the REST API and web UI endpoints from the same services. It is optional; mount it when you want UModel's own tooling for debugging.
+- The services are asserted against `pkg/contract` at compile time, so a signature change in a service breaks the build instead of a host program.
+
 ## Choosing A Surface
 
 | Need | Use |
 |---|---|
 | Human local workflow | CLI or Web UI |
 | HTTP integration | REST API or Go REST client |
+| Go service that wants function calls | `pkg/embed` |
 | Generated model construction | Generated SDKs |
 | Agent integration | MCP / AgentGateway |
 | Contract inspection | OpenAPI and MCP schema |
